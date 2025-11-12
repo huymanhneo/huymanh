@@ -242,15 +242,15 @@ class AudioTranscriber:
     def export_transcriptions(self, transcriptions, output_path):
         """
         Xuất transcriptions ra file text
-        Mỗi cảnh trên 1 dòng, không có dòng trống
+        Mỗi cảnh trên 1 dòng với format: Cảnh X: nội dung
 
         Args:
             transcriptions: List of transcription texts
             output_path: Đường dẫn file output
         """
         with open(output_path, 'w', encoding='utf-8') as f:
-            for text in transcriptions:
-                f.write(text + '\n')
+            for i, text in enumerate(transcriptions, 1):
+                f.write(f'Cảnh {i}: {text}\n')
 
 
 def main():
