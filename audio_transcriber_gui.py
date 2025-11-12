@@ -371,7 +371,7 @@ class AudioTranscriberGUI:
 
             # Transcribe từng segment
             import tempfile
-            transcriptions = []
+            transcriptions = []  # List of tuples: (scene_number, text)
 
             with tempfile.TemporaryDirectory() as temp_dir:
                 for i, segment in enumerate(segments, 1):
@@ -389,8 +389,10 @@ class AudioTranscriberGUI:
                     seg_time = time.time() - seg_start
                     segment_times.append(seg_time)
 
+                    # Luôn lưu scene number và text (kể cả khi rỗng)
+                    transcriptions.append((i, text))
+
                     if text:
-                        transcriptions.append(text)
                         preview = text[:60] + "..." if len(text) > 60 else text
                         self.log(f"  ✓ Cảnh {i}: {preview} ({seg_time:.1f}s)\n", "success")
                     else:
@@ -412,9 +414,12 @@ class AudioTranscriberGUI:
             self.log("=" * 60 + "\n", "info")
             self.log(f"✓ Đã lưu Script vào: {self.output_file.get()}\n", "success")
             self.log(f"✓ Tổng số cảnh: {len(transcriptions)}\n", "success")
+            # Tính độ dài trung bình chỉ cho các cảnh có nội dung
             if transcriptions:
-                avg_len = sum(len(t) for t in transcriptions) / len(transcriptions)
-                self.log(f"✓ Độ dài trung bình: {avg_len:.0f} ký tự/cảnh\n", "success")
+                texts_with_content = [t for _, t in transcriptions if t]
+                if texts_with_content:
+                    avg_len = sum(len(t) for t in texts_with_content) / len(texts_with_content)
+                    self.log(f"✓ Độ dài trung bình: {avg_len:.0f} ký tự/cảnh\n", "success")
 
             # Performance stats
             self.log("\n📊 THỐNG KÊ HIỆU NĂNG:\n", "info")

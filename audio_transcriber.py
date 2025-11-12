@@ -190,7 +190,7 @@ class AudioTranscriber:
 
             # Tạo thư mục tạm
             with tempfile.TemporaryDirectory() as temp_dir:
-                transcriptions = []
+                transcriptions = []  # List of tuples: (scene_number, text)
 
                 print(f"\nĐang transcribe các đoạn audio (Ngôn ngữ: {language})...")
 
@@ -199,8 +199,10 @@ class AudioTranscriber:
                     # Transcribe segment
                     text = self.transcribe_segment(segment, i, temp_dir, language=language)
 
-                    if text:  # Chỉ thêm nếu có nội dung
-                        transcriptions.append(text)
+                    # Luôn lưu scene number và text (kể cả khi rỗng) để đảm bảo đánh số đúng
+                    transcriptions.append((i, text))
+
+                    if text:
                         if self.verbose:
                             preview = text[:60] + "..." if len(text) > 60 else text
                             tqdm.write(f"  Cảnh {i}: {preview}")
@@ -219,7 +221,9 @@ class AudioTranscriber:
 
             print(f"\n✓ Hoàn thành! Đã lưu Script vào: {output_path}")
             print(f"✓ Tổng số cảnh: {len(transcriptions)}")
-            print(f"✓ Độ dài trung bình: {sum(len(t) for t in transcriptions) / len(transcriptions):.0f} ký tự/cảnh" if transcriptions else "")
+            # Tính độ dài trung bình chỉ cho các cảnh có nội dung
+            texts_with_content = [t for _, t in transcriptions if t]
+            print(f"✓ Độ dài trung bình: {sum(len(t) for t in texts_with_content) / len(texts_with_content):.0f} ký tự/cảnh" if texts_with_content else "")
             print(f"✓ Thời gian xử lý: {total_time:.1f} giây ({total_time/60:.1f} phút)")
             print(f"✓ Tốc độ: {avg_time_per_segment:.1f} giây/cảnh")
             print(f"✓ Tỷ lệ: {audio_duration/total_time:.2f}x (audio {audio_duration:.0f}s / xử lý {total_time:.0f}s)")
@@ -245,12 +249,16 @@ class AudioTranscriber:
         Mỗi cảnh trên 1 dòng với format: Cảnh X: nội dung
 
         Args:
-            transcriptions: List of transcription texts
+            transcriptions: List of tuples (scene_number, text)
             output_path: Đường dẫn file output
         """
         with open(output_path, 'w', encoding='utf-8') as f:
-            for i, text in enumerate(transcriptions, 1):
-                f.write(f'Cảnh {i}: {text}\n')
+            for scene_num, text in transcriptions:
+                if text:
+                    f.write(f'Cảnh {scene_num}: {text}\n')
+                else:
+                    # Ghi cảnh rỗng với placeholder
+                    f.write(f'Cảnh {scene_num}: (im lặng)\n')
 
 
 def main():
