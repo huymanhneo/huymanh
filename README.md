@@ -47,7 +47,46 @@ Lưu ý: Lần đầu chạy, Whisper sẽ tự động tải model (khoảng 10
 
 ## Cách sử dụng
 
-### Sử dụng cơ bản (Tiếng Việt)
+### 🖥️ Sử dụng GUI (Giao diện đồ họa) - KHUYẾN NGHỊ
+
+**Cách dễ nhất và trực quan nhất!**
+
+```bash
+python audio_transcriber_gui.py
+```
+
+Giao diện GUI cho phép bạn:
+- 📁 Chọn file audio dễ dàng bằng chuột
+- ⚙️ Điều chỉnh cài đặt (model, ngôn ngữ) trực quan
+- 📊 Xem tiến trình xử lý real-time
+- 📝 Xem log chi tiết ngay trong ứng dụng
+- 💾 Lưu kết quả đơn giản
+
+**Screenshot giao diện:**
+```
+┌─────────────────────────────────────────────────┐
+│  🎵 Audio Transcriber 🇻🇳                      │
+│  Trích xuất audio → Script văn bản              │
+├─────────────────────────────────────────────────┤
+│  1. Chọn File Audio                             │
+│  [input.mp3                    ] [📁 Chọn File] │
+├─────────────────────────────────────────────────┤
+│  2. Chọn File Đầu Ra                            │
+│  [output.txt                   ] [💾 Lưu]       │
+├─────────────────────────────────────────────────┤
+│  3. Cài Đặt                                     │
+│  Model:  [base ▼]  Ngôn ngữ: [vi ▼]           │
+│         [🚀 BẮT ĐẦU XỬ LÝ]                      │
+├─────────────────────────────────────────────────┤
+│  Tiến trình: [████████░░] 80%                  │
+│  Log & Kết quả                                  │
+│  ✓ Đang xử lý cảnh 4/5...                      │
+└─────────────────────────────────────────────────┘
+```
+
+### 💻 Sử dụng Command Line (CLI)
+
+Nếu bạn quen với terminal:
 
 ```bash
 python audio_transcriber.py input.mp3 output.txt
@@ -122,11 +161,12 @@ Mỗi dòng tương ứng với 1 cảnh (8 giây audio).
 
 ```
 huymanh/
-├── audio_transcriber.py    # File chính - CLI tool
-├── example_usage.py         # Ví dụ sử dụng trong Python
-├── requirements.txt         # Thư viện cần thiết
-├── README.md               # Hướng dẫn này
-└── .gitignore              # Git ignore
+├── audio_transcriber.py      # CLI tool (command line)
+├── audio_transcriber_gui.py  # GUI tool (giao diện đồ họa) ⭐
+├── example_usage.py          # Ví dụ sử dụng trong Python
+├── requirements.txt          # Thư viện cần thiết
+├── README.md                 # Hướng dẫn này
+└── .gitignore               # Git ignore
 ```
 
 ## Sử dụng trong Python
