@@ -28,6 +28,7 @@ class AudioTranscriberGUI:
         self.output_file = tk.StringVar()
         self.model_choice = tk.StringVar(value="base")
         self.language_choice = tk.StringVar(value="vi")
+        self.use_fp16 = tk.BooleanVar(value=True)  # Mặc định bật FP16 (nhanh hơn)
         self.is_processing = False
         self.transcriber = None
 
@@ -154,6 +155,25 @@ class AudioTranscriberGUI:
             width=40
         )
         lang_combo.pack(side=tk.LEFT, padx=5)
+
+        # FP16 Option (GPU only)
+        fp16_frame = ttk.Frame(settings_frame)
+        fp16_frame.pack(fill=tk.X, pady=5)
+
+        fp16_check = ttk.Checkbutton(
+            fp16_frame,
+            text="⚡ Bật FP16 (Nhanh gấp 2x trên GPU, giảm nhẹ độ chính xác)",
+            variable=self.use_fp16
+        )
+        fp16_check.pack(anchor=tk.W)
+
+        fp16_note = ttk.Label(
+            fp16_frame,
+            text="   💡 FP16: Bật = Nhanh hơn | Tắt = Chính xác hơn (chỉ có hiệu lực trên GPU)",
+            font=("Arial", 8),
+            foreground="gray"
+        )
+        fp16_note.pack(anchor=tk.W)
 
         # ===== Process Button =====
         button_frame = ttk.Frame(self.root, padding="10")
@@ -336,12 +356,19 @@ class AudioTranscriberGUI:
 
     def process_audio_thread(self):
         """Thread xử lý audio"""
+        import time
+        start_time = time.time()
+
         try:
             # Tạo transcriber
+            use_fp16_value = self.use_fp16.get()
             self.log(f"Đang tải model '{self.model_choice.get()}'...\n", "info")
+            self.log(f"⚡ FP16: {'Bật (nhanh gấp 2x)' if use_fp16_value else 'Tắt (chính xác hơn)'}\n", "info")
+
             self.transcriber = AudioTranscriber(
                 model_name=self.model_choice.get(),
-                verbose=False
+                verbose=False,
+                use_fp16=use_fp16_value
             )
             self.log("✓ Model đã được tải!\n\n", "success")
 
@@ -362,6 +389,9 @@ class AudioTranscriberGUI:
             self.log(f"Đang transcribe {len(segments)} đoạn audio...\n", "info")
             self.log("(Quá trình này có thể mất vài phút tùy độ dài audio)\n\n", "warning")
 
+            # Track time per segment
+            segment_times = []
+
             # Transcribe từng segment
             import tempfile
             transcriptions = []
@@ -372,24 +402,34 @@ class AudioTranscriberGUI:
                         self.log("\n⚠ Đã dừng bởi người dùng!\n", "warning")
                         return
 
+                    seg_start = time.time()
                     self.log(f"Đang xử lý cảnh {i}/{len(segments)}...\n", "info")
 
                     text = self.transcriber.transcribe_segment(
                         segment, i, temp_dir, language=language or 'vi'
                     )
 
+                    seg_time = time.time() - seg_start
+                    segment_times.append(seg_time)
+
                     if text:
                         transcriptions.append(text)
                         preview = text[:60] + "..." if len(text) > 60 else text
-                        self.log(f"  ✓ Cảnh {i}: {preview}\n", "success")
+                        self.log(f"  ✓ Cảnh {i}: {preview} ({seg_time:.1f}s)\n", "success")
                     else:
-                        self.log(f"  ⚠ Cảnh {i}: (không có âm thanh)\n", "warning")
+                        self.log(f"  ⚠ Cảnh {i}: (không có âm thanh) ({seg_time:.1f}s)\n", "warning")
 
             # Xuất kết quả
             self.log("\nĐang lưu kết quả...\n", "info")
             self.transcriber.export_transcriptions(transcriptions, self.output_file.get())
 
-            # Success
+            # Calculate statistics
+            end_time = time.time()
+            total_time = end_time - start_time
+            audio_duration = len(audio) / 1000.0  # giây
+            avg_time = sum(segment_times) / len(segment_times) if segment_times else 0
+
+            # Success with detailed stats
             self.log("\n" + "=" * 60 + "\n", "info")
             self.log("✓ HOÀN THÀNH!\n", "success")
             self.log("=" * 60 + "\n", "info")
@@ -399,11 +439,26 @@ class AudioTranscriberGUI:
                 avg_len = sum(len(t) for t in transcriptions) / len(transcriptions)
                 self.log(f"✓ Độ dài trung bình: {avg_len:.0f} ký tự/cảnh\n", "success")
 
+            # Performance stats
+            self.log("\n📊 THỐNG KÊ HIỆU NĂNG:\n", "info")
+            self.log(f"⏱️  Thời gian tổng: {total_time:.1f}s ({total_time/60:.1f} phút)\n", "info")
+            self.log(f"⚡ Tốc độ trung bình: {avg_time:.1f}s/cảnh\n", "info")
+            self.log(f"🎵 Độ dài audio: {audio_duration:.1f}s ({audio_duration/60:.1f} phút)\n", "info")
+            self.log(f"📈 Tỷ lệ: {audio_duration/total_time:.2f}x (audio/thời gian xử lý)\n", "info")
+            if audio_duration < total_time:
+                self.log(f"   → Xử lý chậm hơn audio thực tế\n", "warning")
+            else:
+                self.log(f"   → Xử lý nhanh hơn audio thực tế ⚡\n", "success")
+
             self.status_label.config(text="Hoàn thành!")
 
             messagebox.showinfo(
                 "Thành công!",
-                f"Đã xử lý xong!\n\nTổng số cảnh: {len(transcriptions)}\nFile đã lưu: {self.output_file.get()}"
+                f"Đã xử lý xong!\n\n" +
+                f"Tổng số cảnh: {len(transcriptions)}\n" +
+                f"Thời gian: {total_time/60:.1f} phút\n" +
+                f"Tốc độ: {avg_time:.1f}s/cảnh\n" +
+                f"File: {self.output_file.get()}"
             )
 
         except Exception as e:

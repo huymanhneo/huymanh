@@ -16,13 +16,14 @@ from tqdm import tqdm
 
 
 class AudioTranscriber:
-    def __init__(self, model_name="base", verbose=True):
+    def __init__(self, model_name="base", verbose=True, use_fp16=None):
         """
         Khởi tạo Audio Transcriber
 
         Args:
             model_name: Tên model Whisper (tiny, base, small, medium, large)
             verbose: Hiển thị thông tin chi tiết
+            use_fp16: Sử dụng FP16 (nhanh hơn trên GPU, None = auto-detect)
         """
         import torch
 
@@ -31,9 +32,16 @@ class AudioTranscriber:
         # Kiểm tra và sử dụng GPU nếu có
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
+        # Auto-detect FP16: Chỉ dùng trên GPU
+        if use_fp16 is None:
+            self.use_fp16 = self.device == "cuda"
+        else:
+            self.use_fp16 = use_fp16 and self.device == "cuda"
+
         if verbose:
             if self.device == "cuda":
                 print(f"✓ Đang sử dụng GPU: {torch.cuda.get_device_name(0)}")
+                print(f"✓ FP16: {'Bật' if self.use_fp16 else 'Tắt'} (Bật = nhanh gấp 2x, Tắt = chính xác hơn)")
             else:
                 print("⚠ Đang sử dụng CPU (không có GPU)")
             print(f"Đang tải model Whisper '{model_name}'...")
@@ -148,7 +156,7 @@ class AudioTranscriber:
                 temp_file,
                 language=language,
                 task="transcribe",
-                fp16=False,  # Tắt fp16 để tăng độ chính xác
+                fp16=self.use_fp16,  # FP16: Nhanh gấp 2x trên GPU, giảm chút độ chính xác
                 verbose=False
             )
 
@@ -173,7 +181,14 @@ class AudioTranscriber:
             audio_path: Đường dẫn file audio đầu vào
             output_path: Đường dẫn file text đầu ra
             language: Ngôn ngữ của audio (vi, en, ...)
+
+        Returns:
+            dict với thông tin xử lý (thời gian, số cảnh, tốc độ...)
         """
+        import time
+
+        start_time = time.time()
+
         try:
             # Load audio
             audio = self.load_audio(audio_path)
@@ -204,17 +219,33 @@ class AudioTranscriber:
             # Xuất kết quả ra file
             self.export_transcriptions(transcriptions, output_path)
 
+            # Tính toán thống kê
+            end_time = time.time()
+            total_time = end_time - start_time
+            audio_duration = len(audio) / 1000.0  # giây
+            avg_time_per_segment = total_time / len(segments) if segments else 0
+
             print(f"\n✓ Hoàn thành! Đã lưu Script vào: {output_path}")
             print(f"✓ Tổng số cảnh: {len(transcriptions)}")
             print(f"✓ Độ dài trung bình: {sum(len(t) for t in transcriptions) / len(transcriptions):.0f} ký tự/cảnh" if transcriptions else "")
+            print(f"✓ Thời gian xử lý: {total_time:.1f} giây ({total_time/60:.1f} phút)")
+            print(f"✓ Tốc độ: {avg_time_per_segment:.1f} giây/cảnh")
+            print(f"✓ Tỷ lệ: {audio_duration/total_time:.2f}x (audio {audio_duration:.0f}s / xử lý {total_time:.0f}s)")
 
-            return True
+            return {
+                'success': True,
+                'total_scenes': len(transcriptions),
+                'total_time': total_time,
+                'audio_duration': audio_duration,
+                'avg_time_per_segment': avg_time_per_segment,
+                'speed_ratio': audio_duration / total_time if total_time > 0 else 0
+            }
 
         except Exception as e:
             print(f"\n✗ Lỗi: {str(e)}")
             import traceback
             traceback.print_exc()
-            return False
+            return {'success': False, 'error': str(e)}
 
     def export_transcriptions(self, transcriptions, output_path):
         """
@@ -302,10 +333,10 @@ Lưu ý:
 
     # Xử lý audio
     try:
-        transcriber = AudioTranscriber(model_name=args.model, verbose=not args.quiet)
-        success = transcriber.process_audio(args.input, args.output, language=language or 'vi')
+        transcriber = AudioTranscriber(model_name=args.model, verbose=not args.quiet, use_fp16=None)
+        result = transcriber.process_audio(args.input, args.output, language=language or 'vi')
 
-        if success:
+        if result.get('success'):
             if not args.quiet:
                 print("\n" + "=" * 60)
                 print("Hoàn thành!")
