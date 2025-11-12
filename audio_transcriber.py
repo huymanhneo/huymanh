@@ -24,10 +24,21 @@ class AudioTranscriber:
             model_name: Tên model Whisper (tiny, base, small, medium, large)
             verbose: Hiển thị thông tin chi tiết
         """
+        import torch
+
         self.verbose = verbose
+
+        # Kiểm tra và sử dụng GPU nếu có
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
         if verbose:
+            if self.device == "cuda":
+                print(f"✓ Đang sử dụng GPU: {torch.cuda.get_device_name(0)}")
+            else:
+                print("⚠ Đang sử dụng CPU (không có GPU)")
             print(f"Đang tải model Whisper '{model_name}'...")
-        self.model = whisper.load_model(model_name)
+
+        self.model = whisper.load_model(model_name, device=self.device)
         self.segment_duration = 8000  # 8 giây = 8000 milliseconds
 
     def load_audio(self, audio_path):
