@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Audio files (nếu không muốn commit file test)
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.flac
+
+# Output files
+output/
+*.txt
+!requirements.txt
+
+# Whisper models cache
+~/.cache/whisper/
+
+# Temporary files
+temp/
+tmp/
+*.tmp
