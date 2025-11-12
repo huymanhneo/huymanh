@@ -16,14 +16,13 @@ from tqdm import tqdm
 
 
 class AudioTranscriber:
-    def __init__(self, model_name="base", verbose=True, use_fp16=None):
+    def __init__(self, model_name="base", verbose=True):
         """
         Khởi tạo Audio Transcriber
 
         Args:
             model_name: Tên model Whisper (tiny, base, small, medium, large)
             verbose: Hiển thị thông tin chi tiết
-            use_fp16: Sử dụng FP16 (nhanh hơn trên GPU, None = auto-detect)
         """
         import torch
 
@@ -32,34 +31,10 @@ class AudioTranscriber:
         # Kiểm tra và sử dụng GPU nếu có
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # Auto-detect FP16: Chỉ dùng trên GPU có Tensor Cores (RTX)
-        if use_fp16 is None:
-            if self.device == "cuda":
-                # Detect GPU architecture
-                gpu_name = torch.cuda.get_device_name(0).lower()
-                # RTX GPUs (Turing/Ampere/Ada) có Tensor Cores → FP16 nhanh
-                # GTX GPUs (Pascal) KHÔNG có Tensor Cores → FP16 chậm hơn
-                has_tensor_cores = any(x in gpu_name for x in ['rtx', 'tesla t4', 'a100', 'a10', 'v100'])
-                self.use_fp16 = has_tensor_cores
-            else:
-                self.use_fp16 = False
-        else:
-            self.use_fp16 = use_fp16 and self.device == "cuda"
-
         if verbose:
             if self.device == "cuda":
                 gpu_name = torch.cuda.get_device_name(0)
                 print(f"✓ Đang sử dụng GPU: {gpu_name}")
-                if use_fp16 is None:
-                    # Auto-detected
-                    if self.use_fp16:
-                        print(f"✓ FP16: Bật (GPU có Tensor Cores, nhanh gấp 2-3x)")
-                    else:
-                        print(f"✓ FP16: Tắt (GPU không có Tensor Cores, FP32 nhanh hơn)")
-                        print(f"   💡 {gpu_name} không hỗ trợ tối ưu FP16, dùng FP32 sẽ nhanh hơn")
-                else:
-                    # Manual override
-                    print(f"✓ FP16: {'Bật' if self.use_fp16 else 'Tắt'} (cài đặt thủ công)")
             else:
                 print("⚠ Đang sử dụng CPU (không có GPU)")
             print(f"Đang tải model Whisper '{model_name}'...")
@@ -174,7 +149,6 @@ class AudioTranscriber:
                 temp_file,
                 language=language,
                 task="transcribe",
-                fp16=self.use_fp16,  # FP16: Nhanh gấp 2x trên GPU, giảm chút độ chính xác
                 verbose=False
             )
 
@@ -351,7 +325,7 @@ Lưu ý:
 
     # Xử lý audio
     try:
-        transcriber = AudioTranscriber(model_name=args.model, verbose=not args.quiet, use_fp16=None)
+        transcriber = AudioTranscriber(model_name=args.model, verbose=not args.quiet)
         result = transcriber.process_audio(args.input, args.output, language=language or 'vi')
 
         if result.get('success'):

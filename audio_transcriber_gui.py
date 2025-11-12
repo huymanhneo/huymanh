@@ -28,10 +28,6 @@ class AudioTranscriberGUI:
         self.output_file = tk.StringVar()
         self.model_choice = tk.StringVar(value="base")
         self.language_choice = tk.StringVar(value="vi")
-
-        # Auto-detect FP16 default based on GPU
-        fp16_default = self.detect_fp16_support()
-        self.use_fp16 = tk.BooleanVar(value=fp16_default)
         self.is_processing = False
         self.transcriber = None
 
@@ -43,23 +39,6 @@ class AudioTranscriberGUI:
 
         # Bắt đầu check queue
         self.check_log_queue()
-
-    def detect_fp16_support(self):
-        """
-        Detect xem GPU có hỗ trợ FP16 tối ưu không
-        Returns True nếu GPU có Tensor Cores (RTX), False nếu không (GTX)
-        """
-        try:
-            import torch
-            if torch.cuda.is_available():
-                gpu_name = torch.cuda.get_device_name(0).lower()
-                # RTX GPUs có Tensor Cores → FP16 nhanh
-                # GTX GPUs KHÔNG có Tensor Cores → FP16 chậm hơn
-                has_tensor_cores = any(x in gpu_name for x in ['rtx', 'tesla t4', 'a100', 'a10', 'v100'])
-                return has_tensor_cores
-        except:
-            pass
-        return False  # Mặc định tắt nếu không detect được
 
     def create_widgets(self):
         """Tạo các widget cho giao diện"""
@@ -175,44 +154,6 @@ class AudioTranscriberGUI:
             width=40
         )
         lang_combo.pack(side=tk.LEFT, padx=5)
-
-        # FP16 Option (GPU only)
-        fp16_frame = ttk.Frame(settings_frame)
-        fp16_frame.pack(fill=tk.X, pady=5)
-
-        fp16_check = ttk.Checkbutton(
-            fp16_frame,
-            text="⚡ Bật FP16 (Nhanh gấp 2-3x trên RTX GPU, giảm nhẹ độ chính xác)",
-            variable=self.use_fp16
-        )
-        fp16_check.pack(anchor=tk.W)
-
-        # Detect GPU và hiển thị note phù hợp
-        try:
-            import torch
-            if torch.cuda.is_available():
-                gpu_name = torch.cuda.get_device_name(0)
-                has_tensor_cores = any(x in gpu_name.lower() for x in ['rtx', 'tesla t4', 'a100', 'a10', 'v100'])
-                if has_tensor_cores:
-                    fp16_note_text = f"   ✓ {gpu_name}: Hỗ trợ FP16 tốt (Tensor Cores) - Nên bật để nhanh hơn"
-                    fp16_color = "green"
-                else:
-                    fp16_note_text = f"   ⚠ {gpu_name}: Không hỗ trợ FP16 tối ưu - Nên TẮT (FP32 nhanh hơn)"
-                    fp16_color = "orange"
-            else:
-                fp16_note_text = "   💡 FP16 chỉ có hiệu lực trên GPU (hiện đang dùng CPU)"
-                fp16_color = "gray"
-        except:
-            fp16_note_text = "   💡 FP16: Bật = Nhanh hơn trên RTX GPU | Tắt = Chính xác hơn"
-            fp16_color = "gray"
-
-        fp16_note = ttk.Label(
-            fp16_frame,
-            text=fp16_note_text,
-            font=("Arial", 8),
-            foreground=fp16_color
-        )
-        fp16_note.pack(anchor=tk.W)
 
         # ===== Process Button =====
         button_frame = ttk.Frame(self.root, padding="10")
@@ -400,14 +341,11 @@ class AudioTranscriberGUI:
 
         try:
             # Tạo transcriber
-            use_fp16_value = self.use_fp16.get()
             self.log(f"Đang tải model '{self.model_choice.get()}'...\n", "info")
-            self.log(f"⚡ FP16: {'Bật (nhanh gấp 2x)' if use_fp16_value else 'Tắt (chính xác hơn)'}\n", "info")
 
             self.transcriber = AudioTranscriber(
                 model_name=self.model_choice.get(),
-                verbose=False,
-                use_fp16=use_fp16_value
+                verbose=False
             )
             self.log("✓ Model đã được tải!\n\n", "success")
 
