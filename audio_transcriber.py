@@ -32,16 +32,34 @@ class AudioTranscriber:
         # Kiểm tra và sử dụng GPU nếu có
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # Auto-detect FP16: Chỉ dùng trên GPU
+        # Auto-detect FP16: Chỉ dùng trên GPU có Tensor Cores (RTX)
         if use_fp16 is None:
-            self.use_fp16 = self.device == "cuda"
+            if self.device == "cuda":
+                # Detect GPU architecture
+                gpu_name = torch.cuda.get_device_name(0).lower()
+                # RTX GPUs (Turing/Ampere/Ada) có Tensor Cores → FP16 nhanh
+                # GTX GPUs (Pascal) KHÔNG có Tensor Cores → FP16 chậm hơn
+                has_tensor_cores = any(x in gpu_name for x in ['rtx', 'tesla t4', 'a100', 'a10', 'v100'])
+                self.use_fp16 = has_tensor_cores
+            else:
+                self.use_fp16 = False
         else:
             self.use_fp16 = use_fp16 and self.device == "cuda"
 
         if verbose:
             if self.device == "cuda":
-                print(f"✓ Đang sử dụng GPU: {torch.cuda.get_device_name(0)}")
-                print(f"✓ FP16: {'Bật' if self.use_fp16 else 'Tắt'} (Bật = nhanh gấp 2x, Tắt = chính xác hơn)")
+                gpu_name = torch.cuda.get_device_name(0)
+                print(f"✓ Đang sử dụng GPU: {gpu_name}")
+                if use_fp16 is None:
+                    # Auto-detected
+                    if self.use_fp16:
+                        print(f"✓ FP16: Bật (GPU có Tensor Cores, nhanh gấp 2-3x)")
+                    else:
+                        print(f"✓ FP16: Tắt (GPU không có Tensor Cores, FP32 nhanh hơn)")
+                        print(f"   💡 {gpu_name} không hỗ trợ tối ưu FP16, dùng FP32 sẽ nhanh hơn")
+                else:
+                    # Manual override
+                    print(f"✓ FP16: {'Bật' if self.use_fp16 else 'Tắt'} (cài đặt thủ công)")
             else:
                 print("⚠ Đang sử dụng CPU (không có GPU)")
             print(f"Đang tải model Whisper '{model_name}'...")
