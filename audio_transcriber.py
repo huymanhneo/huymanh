@@ -7,21 +7,26 @@ Trích xuất audio thành các đoạn 8 giây và transcribe thành Script
 import os
 import sys
 import argparse
+import re
 from pathlib import Path
 from pydub import AudioSegment
 import whisper
 import tempfile
+from tqdm import tqdm
 
 
 class AudioTranscriber:
-    def __init__(self, model_name="base"):
+    def __init__(self, model_name="base", verbose=True):
         """
         Khởi tạo Audio Transcriber
 
         Args:
             model_name: Tên model Whisper (tiny, base, small, medium, large)
+            verbose: Hiển thị thông tin chi tiết
         """
-        print(f"Đang tải model Whisper '{model_name}'...")
+        self.verbose = verbose
+        if verbose:
+            print(f"Đang tải model Whisper '{model_name}'...")
         self.model = whisper.load_model(model_name)
         self.segment_duration = 8000  # 8 giây = 8000 milliseconds
 
@@ -56,6 +61,34 @@ class AudioTranscriber:
 
         return audio
 
+    def clean_vietnamese_text(self, text):
+        """
+        Làm sạch và chuẩn hóa text tiếng Việt
+
+        Args:
+            text: Text cần làm sạch
+
+        Returns:
+            Text đã được làm sạch
+        """
+        if not text:
+            return ""
+
+        # Loại bỏ khoảng trắng thừa
+        text = re.sub(r'\s+', ' ', text)
+
+        # Loại bỏ khoảng trắng đầu cuối
+        text = text.strip()
+
+        # Đảm bảo chữ cái đầu viết hoa (nếu có)
+        if text and text[0].isalpha():
+            text = text[0].upper() + text[1:]
+
+        # Loại bỏ dấu câu thừa
+        text = re.sub(r'([.,!?])\1+', r'\1', text)
+
+        return text
+
     def split_audio(self, audio):
         """
         Chia audio thành các đoạn 8 giây
@@ -80,7 +113,7 @@ class AudioTranscriber:
         print(f"Đã chia thành {len(segments)} đoạn")
         return segments
 
-    def transcribe_segment(self, segment, segment_index, temp_dir):
+    def transcribe_segment(self, segment, segment_index, temp_dir, language="vi"):
         """
         Transcribe một đoạn audio
 
@@ -88,21 +121,37 @@ class AudioTranscriber:
             segment: AudioSegment object
             segment_index: Index của segment (để hiển thị progress)
             temp_dir: Thư mục tạm để lưu file audio
+            language: Ngôn ngữ của audio
 
         Returns:
             Transcription text
         """
-        # Xuất segment ra file tạm
-        temp_file = os.path.join(temp_dir, f"segment_{segment_index}.wav")
-        segment.export(temp_file, format="wav")
+        try:
+            # Xuất segment ra file tạm
+            temp_file = os.path.join(temp_dir, f"segment_{segment_index}.wav")
+            segment.export(temp_file, format="wav")
 
-        # Transcribe bằng Whisper
-        result = self.model.transcribe(temp_file, language="vi")  # Có thể thay đổi language
+            # Transcribe bằng Whisper với các tham số tối ưu cho tiếng Việt
+            result = self.model.transcribe(
+                temp_file,
+                language=language,
+                task="transcribe",
+                fp16=False,  # Tắt fp16 để tăng độ chính xác
+                verbose=False
+            )
 
-        # Xóa file tạm
-        os.remove(temp_file)
+            # Xóa file tạm
+            os.remove(temp_file)
 
-        return result["text"].strip()
+            # Làm sạch text
+            text = self.clean_vietnamese_text(result["text"])
+
+            return text
+
+        except Exception as e:
+            if self.verbose:
+                print(f"  Lỗi khi transcribe cảnh {segment_index}: {str(e)}")
+            return ""
 
     def process_audio(self, audio_path, output_path, language="vi"):
         """
@@ -113,34 +162,47 @@ class AudioTranscriber:
             output_path: Đường dẫn file text đầu ra
             language: Ngôn ngữ của audio (vi, en, ...)
         """
-        # Load audio
-        audio = self.load_audio(audio_path)
+        try:
+            # Load audio
+            audio = self.load_audio(audio_path)
 
-        # Chia audio thành segments
-        segments = self.split_audio(audio)
+            # Chia audio thành segments
+            segments = self.split_audio(audio)
 
-        # Tạo thư mục tạm
-        with tempfile.TemporaryDirectory() as temp_dir:
-            transcriptions = []
+            # Tạo thư mục tạm
+            with tempfile.TemporaryDirectory() as temp_dir:
+                transcriptions = []
 
-            print("\nĐang transcribe các đoạn audio...")
-            for i, segment in enumerate(segments, 1):
-                print(f"Đang xử lý cảnh {i}/{len(segments)}...")
+                print(f"\nĐang transcribe các đoạn audio (Ngôn ngữ: {language})...")
 
-                # Transcribe segment
-                text = self.transcribe_segment(segment, i, temp_dir)
+                # Sử dụng tqdm để hiển thị progress bar
+                for i, segment in enumerate(tqdm(segments, desc="Transcribing", unit="cảnh"), 1):
+                    # Transcribe segment
+                    text = self.transcribe_segment(segment, i, temp_dir, language=language)
 
-                if text:  # Chỉ thêm nếu có nội dung
-                    transcriptions.append(text)
-                    print(f"  Cảnh {i}: {text[:50]}..." if len(text) > 50 else f"  Cảnh {i}: {text}")
-                else:
-                    print(f"  Cảnh {i}: (không có âm thanh)")
+                    if text:  # Chỉ thêm nếu có nội dung
+                        transcriptions.append(text)
+                        if self.verbose:
+                            preview = text[:60] + "..." if len(text) > 60 else text
+                            tqdm.write(f"  Cảnh {i}: {preview}")
+                    else:
+                        if self.verbose:
+                            tqdm.write(f"  Cảnh {i}: (không có âm thanh)")
 
-        # Xuất kết quả ra file
-        self.export_transcriptions(transcriptions, output_path)
+            # Xuất kết quả ra file
+            self.export_transcriptions(transcriptions, output_path)
 
-        print(f"\n✓ Hoàn thành! Đã lưu Script vào: {output_path}")
-        print(f"✓ Tổng số cảnh: {len(transcriptions)}")
+            print(f"\n✓ Hoàn thành! Đã lưu Script vào: {output_path}")
+            print(f"✓ Tổng số cảnh: {len(transcriptions)}")
+            print(f"✓ Độ dài trung bình: {sum(len(t) for t in transcriptions) / len(transcriptions):.0f} ký tự/cảnh" if transcriptions else "")
+
+            return True
+
+        except Exception as e:
+            print(f"\n✗ Lỗi: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     def export_transcriptions(self, transcriptions, output_path):
         """
@@ -158,13 +220,30 @@ class AudioTranscriber:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Trích xuất audio thành các đoạn 8 giây và transcribe thành Script',
+        description='Trích xuất audio thành các đoạn 8 giây và transcribe thành Script (Tối ưu cho tiếng Việt)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ví dụ sử dụng:
+  # Sử dụng cơ bản (tiếng Việt)
   python audio_transcriber.py input.mp3 output.txt
+
+  # Sử dụng model chính xác hơn
   python audio_transcriber.py input.mp3 output.txt --model small
+
+  # Audio tiếng Anh
   python audio_transcriber.py input.mp3 output.txt --language en
+
+  # Tự động detect ngôn ngữ
+  python audio_transcriber.py input.mp3 output.txt --language auto
+
+  # Chế độ im lặng
+  python audio_transcriber.py input.mp3 output.txt --quiet
+
+Lưu ý:
+  - Model 'tiny' nhanh nhất nhưng ít chính xác với tiếng Việt
+  - Model 'base' cân bằng giữa tốc độ và độ chính xác (khuyến nghị)
+  - Model 'small' trở lên chính xác hơn nhưng chậm hơn
+  - Lần đầu chạy sẽ tải model (100MB-3GB)
         """
     )
 
@@ -172,25 +251,65 @@ Ví dụ sử dụng:
     parser.add_argument('output', help='Đường dẫn file text đầu ra')
     parser.add_argument('--model', default='base',
                         choices=['tiny', 'base', 'small', 'medium', 'large'],
-                        help='Model Whisper (mặc định: base)')
+                        help='Model Whisper (mặc định: base, khuyến nghị: small cho tiếng Việt)')
     parser.add_argument('--language', default='vi',
-                        help='Ngôn ngữ của audio (mặc định: vi)')
+                        help='Ngôn ngữ của audio (vi, en, auto, ... - mặc định: vi)')
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help='Chế độ im lặng, chỉ hiển thị kết quả cuối')
 
     args = parser.parse_args()
 
+    # Banner
+    if not args.quiet:
+        print("=" * 60)
+        print("Audio Segmentation & Transcription Tool")
+        print("Trích xuất audio thành các đoạn 8 giây và transcribe")
+        print("=" * 60)
+
     # Kiểm tra file đầu vào
     if not os.path.exists(args.input):
-        print(f"Lỗi: Không tìm thấy file '{args.input}'")
+        print(f"✗ Lỗi: Không tìm thấy file '{args.input}'")
         sys.exit(1)
+
+    # Kiểm tra định dạng file
+    valid_extensions = ['.mp3', '.wav', '.m4a', '.mp4', '.ogg', '.flac', '.aac']
+    file_ext = Path(args.input).suffix.lower()
+    if file_ext not in valid_extensions:
+        print(f"⚠ Cảnh báo: File extension '{file_ext}' có thể không được hỗ trợ")
+        print(f"   Các định dạng được khuyến nghị: {', '.join(valid_extensions)}")
 
     # Tạo thư mục output nếu chưa tồn tại
     output_dir = os.path.dirname(args.output)
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
+        if not args.quiet:
+            print(f"✓ Đã tạo thư mục: {output_dir}")
+
+    # Xử lý language auto
+    language = args.language if args.language != 'auto' else None
 
     # Xử lý audio
-    transcriber = AudioTranscriber(model_name=args.model)
-    transcriber.process_audio(args.input, args.output, language=args.language)
+    try:
+        transcriber = AudioTranscriber(model_name=args.model, verbose=not args.quiet)
+        success = transcriber.process_audio(args.input, args.output, language=language or 'vi')
+
+        if success:
+            if not args.quiet:
+                print("\n" + "=" * 60)
+                print("Hoàn thành!")
+                print("=" * 60)
+            sys.exit(0)
+        else:
+            sys.exit(1)
+
+    except KeyboardInterrupt:
+        print("\n\n✗ Đã bị ngắt bởi người dùng")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n✗ Lỗi không mong đợi: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
