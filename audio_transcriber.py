@@ -129,7 +129,8 @@ class AudioTranscriber:
         try:
             # Xuất segment ra file tạm
             temp_file = os.path.join(temp_dir, f"segment_{segment_index}.wav")
-            segment.export(temp_file, format="wav")
+            # Tắt progress bar của pydub/ffmpeg để tránh nhiễu UI
+            segment.export(temp_file, format="wav", parameters=["-loglevel", "quiet"])
 
             # Transcribe bằng Whisper với các tham số tối ưu cho tiếng Việt
             result = self.model.transcribe(
